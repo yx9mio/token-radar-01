@@ -1,3 +1,7 @@
+[![make.fun competition](https://img.shields.io/badge/make.fun-competition-blue)](https://make.fun/bounty/token-radar-01)
+[![make.fun rank](https://img.shields.io/badge/make.fun-rank-blue)](https://make.fun/bounty/token-radar-01/leaderboard)
+[![make.fun reward](https://img.shields.io/badge/make.fun-reward%20%241325-green)](https://make.fun/bounty/token-radar-01)
+
 # STRATA / token-radar-01
 
 Offline snapshot radar: 200 protocols không ghi nhận token; separate snapshot market-cap view for 416 token-recorded protocols. No network, forecasting or reward assumptions.
