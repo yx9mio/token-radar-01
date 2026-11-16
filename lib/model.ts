@@ -42,33 +42,37 @@ export function score(p,asOf,c) {
  const raw=Math.max(1,Math.round(base*gm*mm));
  return {...p,age_days:age,age_substituted:observed===null,growth_substituted:p.change_7d===null,model:{...m,base,growth_pct:growth,growth_multiplier:gm,maturity_multiplier:mm,raw_implied_value_usd:raw,tie_adjustment_usd:0},implied_value_usd:raw};
 }
+export function convictionFor(p) {
+ const substitutions=Number(p.age_substituted)+Number(p.growth_substituted);
+ return clamp(60+(p.model.source==='category'&&p.model.comparable_count>=3?15:0)+(substitutions===0?10:-10*substitutions)+(new Set(p.chains).size>=2?5:0)+(p.tvl_usd>=100000000?10:0),0,100);
+}
 export function plan(p) {
  const capital=p.tvl_usd>=5e9?250:p.tvl_usd>=1e9?150:p.tvl_usd>=1e8?100:50;
  const hold=p.age_days<180?60:p.age_days<=365?45:30;
- const chain=p.chains[0]??'chain chưa xác định từ snapshot';
+ const chains=[...new Set(p.chains)],chain=chains[0]??'Unspecified chain';
  const gas=chain==='Ethereum'?'2–20':/Arbitrum|Optimism|Base|Polygon|BSC|Avalanche|Solana/.test(chain)?'0.01–1':'0.10–5';
  const c=p.category??'';
- let action='xác minh luồng deposit/stake/usage chính thức trước giao dịch; bỏ qua nếu không xác minh được';
- if(/Lending|CDP|Collateral/.test(c)) action='supply tài sản được hỗ trợ hoặc mở vị thế thế chấp, tránh vay khi chưa hiểu thanh lý';
- else if(/Dexs|Yield|Leveraged Farming/.test(c)) action='deposit pool hoặc cung cấp thanh khoản phù hợp, kiểm tra tổn thất vô thường';
- else if(/Bridge/.test(c)) action='bridge tài sản được hỗ trợ rồi sử dụng trong app nếu có, kiểm tra chain đích';
- else if(/Staking|Restaking|Restaked/.test(c)) action='stake tài sản phù hợp và giữ receipt, kiểm tra thời gian unbond';
- else if(/Perpetual|Derivatives/.test(c)) action='nạp margin; chỉ cân nhắc hedge nhỏ nếu có công cụ phù hợp, tránh đòn bẩy';
- else if(/Prediction/.test(c)) action='nạp tiền và mở vị thế nhỏ trong thị trường được hỗ trợ';
- else if(/Curators|Allocator/.test(c)) action='deposit vault được quản lý và giữ shares, kiểm tra quyền curator';
- else if(/RWA/.test(c)) action='mint hoặc mua tài sản sinh lợi nếu đủ điều kiện truy cập và pháp lý';
- else if(/Stablecoin/.test(c)) action='mint, wrap hoặc deposit stable được hỗ trợ, kiểm tra depeg';
- else if(/Insurance/.test(c)) action='mua cover phù hợp, kiểm tra loại trừ và giữ policy';
- const prefix=chain+': '; const suffix=' Vốn luân chuyển '+capital+' USD (không cộng sáu lần).';
+ let action='verify the official deposit, staking or usage flow before transacting; skip it if you cannot verify support';
+ if(/Lending|CDP|Collateral/.test(c)) action='supply a supported asset or open a collateral position; avoid borrowing without understanding liquidation';
+ else if(/Dexs|Yield|Leveraged Farming/.test(c)) action='deposit into a suitable supported pool or provide liquidity after checking impermanent loss';
+ else if(/Bridge/.test(c)) action='bridge a supported asset and use it in the app if available, after verifying the destination chain';
+ else if(/Staking|Restaking|Restaked/.test(c)) action='stake a suitable supported asset and retain the receipt after checking the unbonding period';
+ else if(/Perpetual|Derivatives/.test(c)) action='deposit margin; consider only a small hedge if a suitable instrument exists, avoiding leverage';
+ else if(/Prediction/.test(c)) action='deposit funds and open a small position in a supported market';
+ else if(/Curators|Allocator/.test(c)) action='deposit into a managed vault and retain shares after checking curator permissions';
+ else if(/RWA/.test(c)) action='mint or buy a supported yield asset only if access and legal requirements are met';
+ else if(/Stablecoin/.test(c)) action='mint, wrap or deposit a supported stablecoin after checking depeg risk';
+ else if(/Insurance/.test(c)) action='buy suitable cover after checking exclusions and retain the policy';
+ const repeat=chains.length>=2?'Repeat a smaller supported position on the second chain, '+chains[1]+'.':'Make a second smaller deposit on the same chain, '+chain+', only if supported.';
  const steps=[
- 'Chuẩn bị ví riêng, giữ seed offline; xác minh chain trước thao tác. Dự trù vốn '+capital+' USD và gas ước tính '+gas+' USD/giao dịch. Thời gian 10 phút.',
- 'Dùng tối đa '+capital+' USD để '+action+' nếu được hỗ trợ/đủ điều kiện; nếu không, bỏ qua. Gas ước tính '+gas+' USD/giao dịch; 20 phút. Phí bridge/swap/protocol chưa biết.',
- 'Kiểm tra vị thế hằng tuần, chỉ hoạt động khi có mục đích sử dụng thực; tránh giao dịch vô ích. Giữ vốn '+capital+' USD; gas ước tính 0 USD khi chỉ đọc, '+gas+' USD nếu giao dịch; 10 phút/tuần.',
- 'Giữ vị thế '+hold+' ngày, theo dõi rủi ro hợp đồng, tài sản và khả năng thoát; có thể mất vốn '+capital+' USD. Gas ước tính 0 USD khi đọc; dự trù '+gas+' USD cho rút vốn.',
- 'Kiểm tra trang points/rewards chính thức nếu tồn tại; không trả phí mở khóa claim hoặc gửi tiền cho người tự xưng hỗ trợ. Vốn giữ '+capital+' USD; gas ước tính 0 USD khi đọc, gas mạng hợp lệ '+gas+' USD nếu claim; 10 phút mỗi tuần.',
- 'Ghi nhật ký vốn '+capital+' USD, giao dịch, gas và thời gian; kết thúc sau '+hold+' ngày hoặc sớm nếu rủi ro tăng. Gas ước tính 0 USD khi ghi, '+gas+' USD nếu rút; 10 phút. Phí khác chưa biết, reward chưa xác minh.'
- ].map(s=>prefix+s);
- return {capital_usd:capital,hold_days:hold,gas_assumption_usd:gas,fees:'Chưa biết phí bridge/swap/protocol; gas chỉ là giả định offline.',risk:action,farm_steps:steps};
+ `Prepare a separate wallet and keep its seed offline; verify ${chain} before acting. Budget $${capital} total capital and estimated gas of $${gas} per transaction. Allow 10 minutes.`,
+ `On ${chain}, use part of the $${capital} budget to ${action}, only if supported and accessible; otherwise skip. Estimated gas: $${gas} per transaction; allow 20 minutes. Bridge, swap and protocol fees are unknown.`,
+ `${repeat} This is an allocation within the same $${capital} total budget, not extra capital. Verify assets and access first; skip if unavailable. Check positions weekly; avoid purposeless transactions. Reading costs no gas; transaction gas must be verified.`,
+ `Hold the supported position for ${hold} days, monitoring contract, asset and exit risks; leave earlier if risk increases. The $${capital} capital is at risk. Reading costs no gas; allow estimated $${gas} gas for withdrawal on ${chain}.`,
+ `Check official points or rewards pages if they exist; never pay a claim-unlock fee or send funds to supposed support staff. Keep capital within $${capital}. Reading costs no gas; a legitimate claim on ${chain} may cost estimated $${gas}. Allow 10 minutes weekly.`,
+ `Log the $${capital} budget, transactions, gas and time. Finish after ${hold} days or earlier if risk rises. Logging costs no gas; withdrawal on ${chain} may cost estimated $${gas}. Allow 10 minutes. Other fees and rewards remain unverified.`
+ ];
+ return {capital_usd:capital,hold_days:hold,gas_assumption_usd:gas,fees:'Bridge, swap and protocol fees are unknown; gas is an offline assumption.',risk:action,farm_steps:steps};
 }
 export function buildRadar(snapshot) {
  const c=comparables(snapshot), watch=new Set(snapshot.watchlist), chosen=snapshot.watchlist.map(slug=>{const p=snapshot.protocols.find(p=>p.slug===slug);if(!p||!isPreToken(p))throw Error('Invalid watchlist');return p;});
@@ -76,7 +80,7 @@ export function buildRadar(snapshot) {
  if(chosen.length+early.length!==200)throw Error('Insufficient rows');
  const board=[...chosen,...early].map(p=>({...score(p,snapshot.as_of,c),cohort:watch.has(p.slug)?'watchlist':'early',token_status:'pre-token'})).sort((a,b)=>b.implied_value_usd-a.implied_value_usd||compareSlug(a,b));
  for(let i=board.length-2;i>=0;i--) { const p=board[i];p.implied_value_usd=Math.max(p.implied_value_usd,board[i+1].implied_value_usd+1);p.model.tie_adjustment_usd=p.implied_value_usd-p.model.raw_implied_value_usd; }
- board.forEach((p,i)=>{p.rank=i+1;Object.assign(p,plan(p));});
+ board.forEach((p,i)=>{p.rank=i+1;Object.assign(p,plan(p));p.conviction=convictionFor(p);});
  const live=snapshot.protocols.filter(p=>!isPreToken(p)).map(p=>({...p,age_days:ageDays(snapshot.as_of,p.listed_at),ratio:p.mcap_usd>0&&p.tvl_usd>0?p.mcap_usd/p.tvl_usd:null})).sort((a,b)=>(b.mcap_usd??-1)-(a.mcap_usd??-1)||compareSlug(a,b));
  return {board,radar:{as_of:snapshot.as_of,source:snapshot.source,comparables:c,rows:board,live,early_size:early.length,live_size:live.length}};
 }

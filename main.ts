@@ -1,5 +1,5 @@
-// STRATA: deterministic snapshot valuation. Runtime dependencies: Node standard library and kit helper.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+// Token Radar: deterministic snapshot valuation. Runtime dependencies: Node standard library and kit helper.
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
@@ -27,7 +27,13 @@ writeFileSync(join(output, 'data.js'), dataScript(radar));
 function copyFlatDirectory(name: string): string[] {
   const source = join(here, name), target = join(output, name);
   mkdirSync(target, { recursive: true });
-  const files = readdirSync(source).filter(f => !f.startsWith('.')).sort();
+  let files = readdirSync(source).filter(f => !f.startsWith('.')).sort();
+  if(name==='screenshots'){
+    const expected=['board.png','detail.png','filtered.png'];
+    if(expected.every(f=>files.includes(f)))files=expected;
+    else process.stderr.write('Warning: v5 acceptance PNG screenshots are unavailable; dossier retains legacy v3 images.\n');
+    for(const previous of readdirSync(target))if(/\.(png|jpe?g)$/i.test(previous)&&!files.includes(previous))rmSync(join(target,previous));
+  }
   for (const file of files) {
     if (!/^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/.test(file)) throw new Error(`Invalid artifact name: ${file}`);
     if (!statSync(join(source, file)).isFile()) throw new Error(`Expected flat file: ${file}`);
@@ -40,4 +46,4 @@ const screenshots = copyFlatDirectory('screenshots');
 if (screenshots.length !== 3) throw new Error('Exactly three final screenshots required');
 // The helper reads only dashboard/ and screenshots/, so rebuilding never includes dossier.json itself.
 writeFileSync(join(output, 'dossier.json'), buildDossier(output, { text_max_bytes: 65536 }));
-process.stdout.write(`STRATA: ${snapshot.protocols.length} protocols; ${board.length} rows; ${snapshot.watchlist.length} watchlist; ${radar.early_size} early; ${radar.live_size} live-token.\n`);
+process.stdout.write(`Token Radar: ${snapshot.protocols.length} protocols; ${board.length} rows; ${snapshot.watchlist.length} watchlist; ${radar.early_size} early; ${radar.live_size} live-token.\n`);
